@@ -1,0 +1,53 @@
+
+{
+  "projectName": "DS-FinanciamentoImobiliario",
+  "packageName": "com.ibm.sample.dtmodelsample",
+  "tableName": "DT_OfertaJuros_Final",
+  "baselineName": "Main",
+  "locale": "pt_BR",
+  "resetIfExists": true,
+  "model": {
+    "conditions": [
+      {
+        "title": "Amount of loan",
+        "statement": "the amount of 'the loan' is between <a number> and <a number>",
+        "partitions": [
+          { "min": 0, "max": 50000 },
+          { "min": 50000, "max": 100000 },
+          { "min": 100000, "max": 150000 }
+        ],
+        "children": {
+          "Grade": {
+            "statement": "the grade of 'the loan' is <a string>",
+            "partitions": [
+              { "value": "A" },
+              { "value": "B" },
+              { "value": "C" }
+            ]
+          }
+        }
+      }
+    ],
+    "actions": [
+      {
+        "title": "Insurance required",
+        "statement": "set insurance required in 'the loan report' to <a boolean>",
+        "valuesByPath": {
+          "[0,0]": "true", "[0,1]": "true", "[0,2]": "true",
+          "[1,0]": "true", "[1,1]": "true", "[1,2]": "true",
+          "[2,0]": "true", "[2,1]": "true", "[2,2]": "true"
+        }
+      },
+      {
+        "title": "Insurance rate",
+        "statement": "set the insurance rate in 'the loan report' to <a number>",
+        "valuesByPath": {
+          "[0,0]": "0.0010", "[0,1]": "0.0012", "[0,2]": "0.0014",
+          "[1,0]": "0.0015", "[1,1]": "0.0017", "[1,2]": "0.0019",
+          "[2,0]": "0.0020", "[2,1]": "0.0022", "[2,2]": "0.0024"
+        }
+      }
+    ]
+  }
+}
+
