@@ -1,33 +1,33 @@
 # ODM Decision Center Java API
 
-A comprehensive Java toolkit for interacting with IBM Operational Decision Manager (ODM) Decision Center via its remote API. This project provides both a REST API server and service layer for managing ODM artifacts including rules, decision tables, ruleflows, vocabularies, variables, and operations.
+Um toolkit Java abrangente para interagir com o IBM Operational Decision Manager (ODM) Decision Center via sua API remota. Este projeto fornece um servidor REST API e camada de serviços para gerenciar artefatos ODM incluindo regras, tabelas de decisão, ruleflows, vocabulários, variáveis e operações.
 
-## 🚀 Features
+## 🚀 Funcionalidades
 
-- **REST API Server** - HTTP endpoints for all ODM operations
-- **Rule Management** - Create, update, and manage Action Rules
-- **Decision Tables** - Build complex decision tables from JSON models
-- **Ruleflows** - Create and manage decision flows (DRF XML)
-- **Variables** - Manage Variable Sets and Variables
-- **Operations** - Create Decision Service Operations with parameters
-- **Vocabularies** - Query BOM vocabularies
-- **Validation** - Automatic artifact validation with detailed reports
+- **Servidor REST API** - Endpoints HTTP para todas as operações ODM
+- **Gerenciamento de Regras** - Criar, atualizar e gerenciar Action Rules
+- **Tabelas de Decisão** - Construir tabelas de decisão complexas a partir de modelos JSON
+- **Ruleflows** - Criar e gerenciar fluxos de decisão (DRF XML)
+- **Variáveis** - Gerenciar Variable Sets e Variables
+- **Operações** - Criar Decision Service Operations com parâmetros
+- **Vocabulários** - Consultar vocabulários BOM
+- **Validação** - Validação automática de artefatos com relatórios detalhados
 
-## 📋 Requirements
+## 📋 Requisitos
 
-- **Java 21** or higher
-- **IBM ODM 9.5+** installation
-- Access to Decision Center API
-- All required ODM libraries (see `jars/` directory)
+- **Java 21** ou superior
+- **IBM ODM 9.5+** instalado
+- Acesso à API do Decision Center
+- Todas as bibliotecas ODM necessárias (veja diretório `jars/`)
 
-## 🏗️ Architecture
+## 🏗️ Arquitetura
 
 ```
-Client Applications
+Aplicações Cliente
         ↓
-REST API Server (Port 8080)
+Servidor REST API (Porta 8080)
         ↓
-Service Layer
+Camada de Serviços
   ├── ODMVocabularyService
   ├── ODMRuleService
   ├── ODMRuleflowService
@@ -35,14 +35,14 @@ Service Layer
   ├── ODMVariableService
   └── ODMOperationService
         ↓
-ODM Decision Center API
+API do ODM Decision Center
         ↓
-Decision Center Repository
+Repositório do Decision Center
 ```
 
-## 🔧 Configuration
+## 🔧 Configuração
 
-Edit the configuration in `ODMHttpServer.java` and `Main.java`:
+Edite a configuração em `ODMHttpServer.java` e `Main.java`:
 
 ```java
 private static final String DC_USERNAME = "odmAdmin";
@@ -51,256 +51,256 @@ private static final String DC_URL = "http://localhost:9060/decisioncenter-api";
 private static final String DC_DATASOURCE = "jdbc/ilogDataSource";
 ```
 
-## 🚀 Quick Start
+## 🚀 Início Rápido
 
-### Compile
+### Compilar
 
 ```bash
 javac -cp "jars/*:." -d bin src/com/ibm/odm/regras/*.java
 ```
 
-### Run REST API Server
+### Executar Servidor REST API
 
 ```bash
 java -cp "bin:jars/*" com.ibm.odm.regras.ODMHttpServer
 ```
 
-Server starts on `http://localhost:8080`
+Servidor inicia em `http://localhost:8080`
 
-### Run CLI Tool
+### Executar Ferramenta CLI
 
 ```bash
-java -cp "bin:jars/*" com.ibm.odm.regras.Main "DecisionServiceName" "%current_key"
+java -cp "bin:jars/*" com.ibm.odm.regras.Main "NomeDecisionService" "%current_key"
 ```
 
-## 📡 REST API Endpoints
+## 📡 Endpoints REST API
 
 ### Health Check
 ```bash
 GET /health
 ```
 
-### Vocabularies
+### Vocabulários
 ```bash
-GET /vocabularies?project=<name>&baseline=<name>
+GET /vocabularies?project=<nome>&baseline=<nome>
 ```
 
-### Projects
+### Projetos
 ```bash
 POST /projects
-DELETE /projects?projectName=<name>
+DELETE /projects?projectName=<nome>
 ```
 
-### Rules
+### Regras
 ```bash
-POST /rules      # Create rule
-GET /rules       # Get rule details
-PUT /rules       # Update rule
+POST /rules      # Criar regra
+GET /rules       # Obter detalhes da regra
+PUT /rules       # Atualizar regra
 ```
 
 ### Ruleflows
 ```bash
-POST /ruleflows  # Create/update ruleflow
-GET /ruleflows   # Get ruleflow details
+POST /ruleflows  # Criar/atualizar ruleflow
+GET /ruleflows   # Obter detalhes do ruleflow
 ```
 
-### Decision Tables
+### Tabelas de Decisão
 ```bash
-POST /decisiontables  # Create decision table
-GET /decisiontables   # Get table details
+POST /decisiontables  # Criar tabela de decisão
+GET /decisiontables   # Obter detalhes da tabela
 ```
 
-### Variables
+### Variáveis
 ```bash
-POST /variables      # Create variable set with variables
-GET /variables       # List variable sets
-POST /variablesets   # Create empty variable set
+POST /variables      # Criar variable set com variáveis
+GET /variables       # Listar variable sets
+POST /variablesets   # Criar variable set vazio
 ```
 
-### Operations
+### Operações
 ```bash
-POST /operations  # Create/update operation
-GET /operations   # Get operation details
+POST /operations  # Criar/atualizar operação
+GET /operations   # Obter detalhes da operação
 ```
 
-## 💡 Usage Examples
+## 💡 Exemplos de Uso
 
-### Create a Rule
+### Criar uma Regra
 
 ```bash
 curl -X POST http://localhost:8080/rules \
   -H "Content-Type: application/json" \
   -d '{
-    "projectName": "LoanApproval",
-    "packageName": "rules",
-    "ruleName": "CheckCreditScore",
-    "ruleBody": "if the credit score of the applicant is at least 700 then approve the loan;",
+    "projectName": "AprovacaoEmprestimo",
+    "packageName": "regras",
+    "ruleName": "VerificarScore",
+    "ruleBody": "se o score de crédito do solicitante é pelo menos 700 então aprovar o empréstimo;",
     "priority": 10
   }'
 ```
 
-### Create a Decision Table
+### Criar uma Tabela de Decisão
 
 ```bash
 curl -X POST http://localhost:8080/decisiontables \
   -H "Content-Type: application/json" \
   -d '{
-    "projectName": "LoanApproval",
-    "packagePath": "tables",
-    "tableName": "LoanDecision",
+    "projectName": "AprovacaoEmprestimo",
+    "packagePath": "tabelas",
+    "tableName": "DecisaoEmprestimo",
     "model": {
       "conditions": [
         {
-          "title": "Credit Score",
-          "statement": "the credit score of the applicant",
+          "title": "Score de Crédito",
+          "statement": "o score de crédito do solicitante",
           "type": "range:number"
         }
       ],
       "actions": [
         {
-          "title": "Decision",
-          "statement": "set the decision to <a string>"
+          "title": "Decisão",
+          "statement": "definir a decisão como <uma string>"
         }
       ]
     }
   }'
 ```
 
-### Create Variables
+### Criar Variáveis
 
 ```bash
 curl -X POST http://localhost:8080/variables \
   -H "Content-Type: application/json" \
   -d '{
-    "projectName": "LoanApproval",
-    "packageName": "variables",
-    "variableSetName": "LoanVariables",
+    "projectName": "AprovacaoEmprestimo",
+    "packageName": "variaveis",
+    "variableSetName": "VariaveisEmprestimo",
     "variables": [
       {
-        "name": "applicantName",
+        "name": "nomeSolicitante",
         "bomType": "java.lang.String",
-        "verbalization": "the applicant name",
+        "verbalization": "o nome do solicitante",
         "initialValue": ""
       }
     ]
   }'
 ```
 
-### Create an Operation
+### Criar uma Operação
 
 ```bash
 curl -X POST http://localhost:8080/operations \
   -H "Content-Type: application/json" \
   -d '{
-    "projectName": "LoanApproval",
-    "operationName": "approveLoan",
-    "description": "Loan approval decision",
-    "ruleflowName": "LoanApprovalFlow",
-    "rulesetName": "loan-approval-ruleset",
+    "projectName": "AprovacaoEmprestimo",
+    "operationName": "aprovarEmprestimo",
+    "description": "Operação de decisão de aprovação de empréstimo",
+    "ruleflowName": "FluxoAprovacaoEmprestimo",
+    "rulesetName": "ruleset-aprovacao-emprestimo",
     "parameters": [
       {
-        "name": "applicant",
+        "name": "solicitante",
         "direction": "IN",
-        "bomType": "loan.Applicant"
+        "bomType": "emprestimo.Solicitante"
       },
       {
-        "name": "decision",
+        "name": "decisao",
         "direction": "OUT",
-        "bomType": "loan.Decision"
+        "bomType": "emprestimo.Decisao"
       }
     ]
   }'
 ```
 
-## 🔍 Validation Features
+## 🔍 Funcionalidades de Validação
 
-All artifact creation includes automatic validation:
+Toda criação de artefatos inclui validação automática:
 
-- **Pre-validation**: Syntax checking before creation
-- **Post-validation**: Structure verification after creation
-- **Validation Report**: Detailed issues with severity levels (ERROR, WARN, INFO)
+- **Pré-validação**: Verificação de sintaxe antes da criação
+- **Pós-validação**: Verificação de estrutura após a criação
+- **Relatório de Validação**: Problemas detalhados com níveis de severidade (ERROR, WARN, INFO)
 
-### Validation Checks
+### Verificações de Validação
 
 **Action Rules:**
-- Non-empty body
-- No placeholder markers (`<...>`)
-- Balanced delimiters `()`, `{}`, `[]`
-- Even number of quotes
-- TODO/FIXME detection (warning)
+- Corpo não vazio
+- Sem marcadores de placeholder (`<...>`)
+- Delimitadores balanceados `()`, `{}`, `[]`
+- Número par de aspas
+- Detecção de TODO/FIXME (aviso)
 
-**Decision Tables:**
-- At least one condition column
-- Non-empty column titles
-- No duplicate titles
-- Valid root partition
-- At least one expression
+**Tabelas de Decisão:**
+- Pelo menos uma coluna de condição
+- Títulos de coluna não vazios
+- Sem títulos duplicados
+- Partição raiz válida
+- Pelo menos uma expressão
 
 **Ruleflows:**
-- Well-formed XML
-- Valid root element
-- Contains task/flow elements
+- XML bem formado
+- Elemento raiz válido
+- Contém elementos task/flow
 
-## 📦 Project Structure
+## 📦 Estrutura do Projeto
 
 ```
 ODM_TOOLS/
 ├── src/com/ibm/odm/regras/
-│   ├── Main.java                      # CLI entry point
-│   ├── ODMHttpServer.java             # REST API server
-│   ├── ODMArtifactValidator.java      # Validation engine
-│   ├── ODMVocabularyService.java      # Vocabulary operations
-│   ├── ODMDecisionTableService.java   # Decision table CRUD
-│   ├── ODMRuleService.java            # Rule management
-│   ├── ODMRuleflowService.java        # Ruleflow operations
-│   ├── ODMVariableService.java        # Variable Set management
-│   ├── ODMOperationService.java       # Operation management
-│   └── DTJsonBuilder.java             # JSON to DT converter
-├── jars/                              # ODM and dependency libraries
-├── bin/                               # Compiled classes
-└── README.md                          # This file
+│   ├── Main.java                      # Ponto de entrada CLI
+│   ├── ODMHttpServer.java             # Servidor REST API
+│   ├── ODMArtifactValidator.java      # Motor de validação
+│   ├── ODMVocabularyService.java      # Operações de vocabulário
+│   ├── ODMDecisionTableService.java   # CRUD de tabelas de decisão
+│   ├── ODMRuleService.java            # Gerenciamento de regras
+│   ├── ODMRuleflowService.java        # Operações de ruleflow
+│   ├── ODMVariableService.java        # Gerenciamento de Variable Set
+│   ├── ODMOperationService.java       # Gerenciamento de operações
+│   └── DTJsonBuilder.java             # Conversor JSON para DT
+├── jars/                              # Bibliotecas ODM e dependências
+├── bin/                               # Classes compiladas
+└── README.md                          # Este arquivo
 ```
 
-## 🔐 Security Notes
+## 🔐 Notas de Segurança
 
-⚠️ **Important**: This is a development toolkit.
+⚠️ **Importante**: Este é um toolkit de desenvolvimento.
 
-- Credentials are stored in plain text (development only)
-- Use environment variables for production
-- Implement proper authentication/authorization
-- Use HTTPS for production deployments
-- Always test in non-production environments first
+- Credenciais são armazenadas em texto simples (apenas desenvolvimento)
+- Use variáveis de ambiente para produção
+- Implemente autenticação/autorização adequada
+- Use HTTPS para implantações em produção
+- Sempre teste em ambientes não produtivos primeiro
 
-## 🐛 Troubleshooting
+## 🐛 Solução de Problemas
 
-### Connection Refused
-- Verify `DC_URL` is correct
-- Check Decision Center is running
-- Verify network connectivity
+### Conexão Recusada
+- Verifique se `DC_URL` está correto
+- Verifique se o Decision Center está em execução
+- Verifique a conectividade de rede
 
-### Authentication Failed
-- Check `DC_USERNAME` and `DC_PASSWORD`
-- Verify user has appropriate permissions
+### Falha de Autenticação
+- Verifique `DC_USERNAME` e `DC_PASSWORD`
+- Verifique se o usuário tem permissões apropriadas
 
-### Artifact Not Found
-- Verify baseline name is correct
-- Check project exists
-- Ensure working baseline is set
+### Artefato Não Encontrado
+- Verifique se o nome da baseline está correto
+- Verifique se o projeto existe
+- Certifique-se de que a baseline de trabalho está definida
 
-### Validation Errors
-- Review validation report in response
-- Check for placeholder markers
-- Verify syntax of IRL/DRF
+### Erros de Validação
+- Revise o relatório de validação na resposta
+- Verifique marcadores de placeholder
+- Verifique a sintaxe de IRL/DRF
 
-## 🚢 Docker Setup (Optional)
+## 🚢 Configuração Docker (Opcional)
 
-For testing with Docker-based ODM:
+Para testar com ODM baseado em Docker:
 
 ```bash
-# Pull ODM image
+# Baixar imagem ODM
 docker pull icr.io/cpopen/odm-k8s/odm:9.5.0
 
-# Run ODM container
+# Executar container ODM
 docker run -d \
   --name odm-local \
   -p 9060:9060 \
@@ -308,50 +308,50 @@ docker run -d \
   -e SAMPLE=true \
   icr.io/cpopen/odm-k8s/odm:9.5.0
 
-# Access Decision Center
+# Acessar Decision Center
 # URL: http://localhost:9060/decisioncenter
-# User: odmAdmin / Pass: odmAdmin
+# Usuário: odmAdmin / Senha: odmAdmin
 ```
 
-## 📚 Key Dependencies
+## 📚 Principais Dependências
 
-- IBM ODM 9.5+ libraries (jrules-teamserver, jrules-engine, etc.)
+- Bibliotecas IBM ODM 9.5+ (jrules-teamserver, jrules-engine, etc.)
 - Spring Framework 6.2.12
-- Jackson 2.16.0 (JSON processing)
+- Jackson 2.16.0 (processamento JSON)
 - Jakarta XML Bind API 4.0.2
 - Eclipse EMF 2.31.0+
-- Apache Commons libraries
+- Bibliotecas Apache Commons
 
-## 🤝 Contributing
+## 🤝 Contribuindo
 
-When adding new features:
-1. Follow existing service patterns
-2. Add validation where appropriate
-3. Include error handling
-4. Update REST API endpoints
-5. Document new methods
+Ao adicionar novos recursos:
+1. Siga os padrões de serviço existentes
+2. Adicione validação quando apropriado
+3. Inclua tratamento de erros
+4. Atualize endpoints REST API
+5. Documente novos métodos
 
-## 📄 License
+## 📄 Licença
 
-This project is for IBM ODM integration purposes. Ensure compliance with IBM ODM licensing terms.
+Este projeto é para fins de integração com IBM ODM. Certifique-se de estar em conformidade com os termos de licenciamento do IBM ODM.
 
-## 📞 Support
+## 📞 Suporte
 
-For issues related to:
-- **ODM API**: Consult [IBM ODM Documentation](https://www.ibm.com/docs/en/odm)
-- **This toolkit**: Review source code comments and examples
-- **Decision Center**: Check IBM support resources
+Para problemas relacionados a:
+- **API ODM**: Consulte a [Documentação IBM ODM](https://www.ibm.com/docs/en/odm)
+- **Este toolkit**: Revise comentários no código-fonte e exemplos
+- **Decision Center**: Verifique recursos de suporte IBM
 
-## 🔗 Useful Links
+## 🔗 Links Úteis
 
-- [IBM ODM Documentation](https://www.ibm.com/docs/en/odm)
-- [Decision Center API Guide](https://www.ibm.com/docs/en/odm/9.0.0?topic=center-decision-api)
-- [IRL Language Reference](https://www.ibm.com/docs/en/odm/9.0.0?topic=language-ilog-rule-reference)
+- [Documentação IBM ODM](https://www.ibm.com/docs/en/odm)
+- [Guia da API do Decision Center](https://www.ibm.com/docs/en/odm/9.0.0?topic=center-decision-api)
+- [Referência da Linguagem IRL](https://www.ibm.com/docs/en/odm/9.0.0?topic=language-ilog-rule-reference)
 
 ---
 
-**Version**: 1.0  
+**Versão**: 1.0  
 **Java**: 21  
-**ODM Compatibility**: 9.5+
+**Compatibilidade ODM**: 9.5+
 
-Made with ❤️ for IBM ODM automation
+Feito com ❤️ para automação IBM ODM
