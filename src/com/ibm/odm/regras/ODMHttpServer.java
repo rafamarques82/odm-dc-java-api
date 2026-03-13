@@ -95,7 +95,10 @@ public class ODMHttpServer {
         server.createContext("/variables", ODMHttpServer::handleVariables);
         server.createContext("/operations", ODMHttpServer::handleOperations);
 
-        // >>> NOVO ENDPOINT: cria Variable Set vazio
+        // >>> NOVO ENDPOINT: Test Suites
+        server.createContext("/testsuites", ODMHttpServer::handleTestSuites);
+        
+        // >>> NOVO ENDPOINT: Variable Sets
         server.createContext("/variablesets", ODMHttpServer::handleVariableSets);
 
 
@@ -1102,13 +1105,16 @@ private static void handleOperations(com.sun.net.httpserver.HttpExchange ex) thr
           // packagePath e description (opcionais)
           String packagePath = text(body, "packagePath");
           String description = text(body, "description");
+          
+          // variableSetName (opcional) — nome do Variable Set para parâmetros da Operation
+          String variableSetName = text(body, "variableSetName");
 
           // ==== Chamada reflexiva ao service.saveOperation(...) (tolerante a variações) ====
           Map<String,Object> out;
 
-          // Tentativa 1 — 14 parâmetros (com rulesetName no fim)
+          // Tentativa 1 — 15 parâmetros (com rulesetName e variableSetName)
           try {
-              Object[] args14 = new Object[]{
+              Object[] args15 = new Object[]{
                       projectName,
                       baselineName,
                       operationName,
@@ -1122,20 +1128,49 @@ private static void handleOperations(com.sun.net.httpserver.HttpExchange ex) thr
                       rsSets.isEmpty()    ? null : rsSets,
                       packagePath,
                       description,
-                      rulesetName
+                      rulesetName,
+                      variableSetName
               };
-              java.lang.reflect.Method m14 = findCompatibleMethod(
-                      svc.getClass(), "saveOperation", classesOf(args14));
-              if (m14 != null) {
+              java.lang.reflect.Method m15 = findCompatibleMethod(
+                      svc.getClass(), "saveOperation", classesOf(args15));
+              if (m15 != null) {
                   @SuppressWarnings("unchecked")
-                  Map<String,Object> tmp = (Map<String,Object>) m14.invoke(svc, args14);
+                  Map<String,Object> tmp = (Map<String,Object>) m15.invoke(svc, args15);
                   out = tmp;
               } else {
-                  throw new NoSuchMethodException("saveOperation(14) não disponível");
+                  throw new NoSuchMethodException("saveOperation(15) não disponível");
               }
-          } catch (Throwable ignore14) {
-              // Tentativa 2 — 13 parâmetros (sem rulesetName) — compat com código anterior
+          } catch (Throwable ignore15) {
+              // Tentativa 2 — 14 parâmetros (com rulesetName, sem variableSetName)
               try {
+                  Object[] args14 = new Object[]{
+                          projectName,
+                          baselineName,
+                          operationName,
+                          rfPackage,
+                          rfName,
+                          /* parameters */ params,
+                          /* rulesetParameters */ rsParams,
+                          /* registryRootPackageIgnored */ null,
+                          descSets.isEmpty()  ? null : descSets,
+                          paramSets.isEmpty() ? null : paramSets,
+                          rsSets.isEmpty()    ? null : rsSets,
+                          packagePath,
+                          description,
+                          rulesetName
+                  };
+                  java.lang.reflect.Method m14 = findCompatibleMethod(
+                          svc.getClass(), "saveOperation", classesOf(args14));
+                  if (m14 != null) {
+                      @SuppressWarnings("unchecked")
+                      Map<String,Object> tmp = (Map<String,Object>) m14.invoke(svc, args14);
+                      out = tmp;
+                  } else {
+                      throw new NoSuchMethodException("saveOperation(14) não disponível");
+                  }
+              } catch (Throwable ignore14) {
+                  // Tentativa 3 — 13 parâmetros (sem rulesetName) — compat com código anterior
+                  try {
                   Object[] args13 = new Object[]{
                           projectName,
                           baselineName,
@@ -1161,7 +1196,7 @@ private static void handleOperations(com.sun.net.httpserver.HttpExchange ex) thr
                       throw new NoSuchMethodException("saveOperation(13) não disponível");
                   }
               } catch (Throwable ignore13) {
-                  // Tentativa 3 — 11 parâmetros (sem packagePath/description)
+                  // Tentativa 4 — 11 parâmetros (sem packagePath/description)
                   Object[] args11 = new Object[]{
                           projectName,
                           baselineName,
@@ -1175,16 +1210,17 @@ private static void handleOperations(com.sun.net.httpserver.HttpExchange ex) thr
                           paramSets.isEmpty() ? null : paramSets,
                           rsSets.isEmpty()    ? null : rsSets
                   };
-                  java.lang.reflect.Method m11 = findCompatibleMethod(
-                          svc.getClass(), "saveOperation", classesOf(args11));
-                  if (m11 == null) {
-                      sendResponse(ex, 500, jsonError(
-                              "Nenhum overload compatível de saveOperation(...) encontrado (14/13/11 parâmetros)"));
-                      return;
+                      java.lang.reflect.Method m11 = findCompatibleMethod(
+                              svc.getClass(), "saveOperation", classesOf(args11));
+                      if (m11 == null) {
+                          sendResponse(ex, 500, jsonError(
+                                  "Nenhum overload compatível de saveOperation(...) encontrado (15/14/13/11 parâmetros)"));
+                          return;
+                      }
+                      @SuppressWarnings("unchecked")
+                      Map<String,Object> tmp = (Map<String,Object>) m11.invoke(svc, args11);
+                      out = tmp;
                   }
-                  @SuppressWarnings("unchecked")
-                  Map<String,Object> tmp = (Map<String,Object>) m11.invoke(svc, args11);
-                  out = tmp;
               }
           }
 
@@ -1197,12 +1233,148 @@ private static void handleOperations(com.sun.net.httpserver.HttpExchange ex) thr
       }
 
       sendResponse(ex, 405, jsonError("Método ou ação não suportados para /operations"));
-
   } catch (Exception e) {
       e.printStackTrace();
       sendResponse(ex, 500, jsonError(e.getMessage() == null ? e.getClass().getName() : e.getMessage()));
   }
 }
+
+    // ============================================================
+    // ====================== TEST SUITES =========================
+    // ============================================================
+    /**
+     * Handler para Test Suites:
+     * - POST /testsuites - Cria um test suite vazio
+     * - GET /testsuites - Lista test suites de um projeto
+     *
+     * IMPORTANTE:
+     * - Test Suites ficam no projeto (não em pacotes)
+     * - Test Suite está associado a uma Decision Operation
+     * - Cenários de teste devem ser importados via Excel no Decision Center
+     *
+     * Payload POST exemplo:
+     * {
+     *   "projectName": "MyProject",
+     *   "testSuiteName": "MySuite",
+     *   "operationName": "MyOperation",
+     *   "serverName": "Test and Simulation Execution",
+     *   "baselineName": "Main"
+     * }
+     *
+     * Query GET exemplo:
+     * /testsuites?projectName=MyProject&baselineName=Main
+     */
+    private static void handleTestSuites(HttpExchange ex) throws IOException {
+        String method = ex.getRequestMethod();
+        Map<String, String> q = parseQuery(ex.getRequestURI().getRawQuery());
+        
+        try {
+            switch (method) {
+                case "POST":
+                    handleCreateTestSuite(ex, q);
+                    break;
+                case "GET":
+                    handleListTestSuites(ex, q);
+                    break;
+                default:
+                    sendResponse(ex, 405, jsonError("Método não suportado. Use POST ou GET"));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            sendResponse(ex, 500, jsonError(e.getMessage() == null ? e.getClass().getName() : e.getMessage()));
+        }
+    }
+
+    /**
+     * POST /testsuites - Cria um test suite vazio
+     * Os cenários devem ser importados via Excel no Decision Center
+     */
+    private static void handleCreateTestSuite(HttpExchange ex, Map<String, String> q) throws Exception {
+        String bodyRaw = readBodyAsString(ex);
+        JsonNode node = safeParseJson(bodyRaw);
+        
+        // Extrai parâmetros
+        String projectName = text(node, "projectName");
+        String testSuiteName = text(node, "testSuiteName");
+        String operationName = text(node, "operationName");
+        String serverName = textOr("", node, "serverName");
+        String baselineName = normalizeBaseline(textOr("Main", node, "baselineName"));
+        
+        // Valida parâmetros obrigatórios
+        if (isBlank(projectName)) {
+            sendResponse(ex, 400, jsonError("projectName é obrigatório"));
+            return;
+        }
+        if (isBlank(testSuiteName)) {
+            sendResponse(ex, 400, jsonError("testSuiteName é obrigatório"));
+            return;
+        }
+        if (isBlank(operationName)) {
+            sendResponse(ex, 400, jsonError("operationName é obrigatório"));
+            return;
+        }
+        
+        // Cria o serviço e executa
+        ODMTestSuiteService service = new ODMTestSuiteService(DC_URL, DC_DATASOURCE, DC_USERNAME, DC_PASSWORD);
+        IlrSession session = null;
+        
+        try {
+            session = service.openSession();
+            IlrRuleProject project = service.getProjectOrThrow(session, projectName);
+            service.setWorkingBaseline(session, project, baselineName);
+            
+            IlrElementDetails testSuite = service.createTestSuite(
+                session, project, testSuiteName, operationName, serverName
+            );
+            
+            // Monta resposta
+            String jsonResponse = String.format(
+                "{\"success\":true,\"message\":\"Test Suite criado com sucesso. Importe os cenários via Excel no Decision Center.\",\"testSuiteName\":\"%s\",\"projectName\":\"%s\",\"operationName\":\"%s\"}",
+                escapeJson(testSuiteName), escapeJson(projectName), escapeJson(operationName)
+            );
+            sendResponse(ex, 200, jsonResponse);
+            
+        } finally {
+            service.closeSession(session);
+        }
+    }
+
+    /**
+     * GET /testsuites - Lista test suites de um projeto
+     * Query params: projectName (obrigatório), baselineName (opcional)
+     */
+    private static void handleListTestSuites(HttpExchange ex, Map<String, String> q) throws Exception {
+        String projectName = q.get("projectName");
+        String baselineName = normalizeBaseline(q.getOrDefault("baselineName", "Main"));
+        
+        if (isBlank(projectName)) {
+            sendResponse(ex, 400, jsonError("projectName é obrigatório"));
+            return;
+        }
+        
+        ODMTestSuiteService service = new ODMTestSuiteService(DC_URL, DC_DATASOURCE, DC_USERNAME, DC_PASSWORD);
+        
+        try {
+            List<Map<String, Object>> testSuites = service.listTestSuites(projectName, baselineName);
+            
+            try {
+                String jsonResponse = mapper.writeValueAsString(Map.of(
+                    "projectName", projectName,
+                    "baselineName", baselineName,
+                    "testSuiteCount", testSuites.size(),
+                    "testSuites", testSuites
+                ));
+                sendResponse(ex, 200, jsonResponse);
+            } catch (Exception jsonEx) {
+                sendResponse(ex, 500, jsonError("Erro ao gerar JSON: " + jsonEx.getMessage()));
+            }
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            sendResponse(ex, 500, jsonError(e.getMessage() == null ? e.getClass().getName() : e.getMessage()));
+        }
+    }
+
     // ============================================================
     // =========================== HEALTH =========================
     // ============================================================

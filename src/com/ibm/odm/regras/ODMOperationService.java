@@ -7,6 +7,11 @@ import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EReference;
 import org.eclipse.emf.ecore.EStructuralFeature;
 
+import com.ibm.rules.decisionservice.model.IDsDecisionOperation;
+import com.ibm.rules.decisionservice.model.IDsRuleflow;
+import ilog.rules.teamserver.model.deployment.commands.CreateDecisionOperation;
+import ilog.rules.teamserver.model.deployment.commands.EditDecisionOperation;
+
 import java.lang.reflect.Method;
 import java.util.*;
 
@@ -107,7 +112,8 @@ public class ODMOperationService {
             String description,
             List<Map<String, String>> parameters,
             String ruleflowName,
-            String rulesetName
+            String rulesetName,
+            String variableSetName               // Nome do Variable Set para parâmetros
     ) throws Exception {
 
         Map<String,String> result = new LinkedHashMap<>();
@@ -154,15 +160,24 @@ public class ODMOperationService {
 
             // 4) Adiciona variáveis (parâmetros) à Operation
             if (parameters != null && !parameters.isEmpty()) {
+                // Determina qual Variable Set usar (prioridade: parâmetro > "variaveis" > "global")
+                String vsName = (variableSetName != null && !variableSetName.isBlank())
+                    ? variableSetName
+                    : "variaveis";
+                
                 for (Map<String, String> param : parameters) {
                     String pName = param.get("name");
                     String direction = param.get("direction");
                     if (pName == null || pName.isBlank()) continue;
 
-                    // usa Variable Set "global" (como no drop anterior)
-                    IlrElementHandle varSetHandle = findVariableSetHandleByName(session, "global");
+                    // Busca Variable Set (tenta o especificado, depois fallback para "global")
+                    IlrElementHandle varSetHandle = findVariableSetHandleByName(session, vsName);
+                    if (varSetHandle == null && !"global".equals(vsName)) {
+                        System.out.println("[ODMOperationService] ⚠ Variable Set '" + vsName + "' não encontrado, tentando 'global'...");
+                        varSetHandle = findVariableSetHandleByName(session, "global");
+                    }
                     if (varSetHandle == null) {
-                        System.out.println("[ODMOperationService] ✗ Variable Set 'global' não encontrado");
+                        System.out.println("[ODMOperationService] ✗ Variable Set '" + vsName + "' não encontrado");
                         continue;
                     }
 
@@ -177,10 +192,10 @@ public class ODMOperationService {
                     Object varNameFeature = getVarNameMethod.invoke(dsm);
                     opVarDtls.setRawValue((EStructuralFeature) varNameFeature, pName);
 
-                    // variable set (referência por handle)
+                    // variable set (usa setRawValue com o handle, como no exemplo oficial)
                     Method getVarSetMethod = dsm.getClass().getMethod("getOperationVariable_VariableSet");
                     Object varSetFeature = getVarSetMethod.invoke(dsm);
-                    setReferenceValueDyn(opVarDtls, varSetFeature, varSetHandle);
+                    opVarDtls.setRawValue((EStructuralFeature) varSetFeature, varSetHandle);
 
                     // direção (enum -> literal string)
                     Method getDirectionMethod = dsm.getClass().getMethod("getOperationVariable_Direction");
@@ -210,19 +225,122 @@ public class ODMOperationService {
             if (ruleflowName != null && !ruleflowName.isBlank()) {
                 IlrRuleflow ruleflow = findRuleflowByNameAnyPackage(session, ruleflowName);
                 if (ruleflow != null) {
-                    boolean ok = setOperationRuleflowReference(session, dsm, operationHandle, ruleflow);
-                    if (ok) {
-                        System.out.println("[ODMOperationService] ✓ Ruleflow associado: " + ruleflowName);
-                    } else {
-                        System.out.println("[ODMOperationService] ⚠ Não foi possível associar ruleflow (feature/método ausente)");
+                    // Obter o nome completo do ruleflow com o projeto
+                    String ruleflowFullPath = null;
+                    String projectName = null;
+                    try {
+                        // Obter o projeto do ruleflow
+                        IlrRuleProject rfProject = (IlrRuleProject) ruleflow.getProject();
+                        projectName = rfProject.getName();
+                        ruleflowFullPath = projectName + "/" + ruleflowName;
+                        System.out.println("[ODMOperationService] Ruleflow path completo: " + ruleflowFullPath);
+                    } catch (Exception e) {
+                        System.out.println("[ODMOperationService] ⚠ Não conseguiu obter projeto do ruleflow: " + e.getMessage());
+                        ruleflowFullPath = ruleflowName; // fallback
+                    }
+                    
+                    // Tentativa 1: Usar EditDecisionOperation (forma oficial)
+                    boolean success = false;
+                    if (projectName != null) {
+                        success = associateRuleflowViaEditCommand(session, operationHandle, ruleflowFullPath, operationName, projectName);
+                        if (success) {
+                            System.out.println("[ODMOperationService] ✓ Ruleflow associado via EditDecisionOperation!");
+                        }
+                    }
+                    
+                    // Tentativa 2: Usar setRawValue com objeto materializado (fallback)
+                    if (!success) {
+                        System.out.println("[ODMOperationService] Associando ruleflow via setRawValue...");
+                    try {
+                        Method getRuleflowMethod = dsm.getClass().getMethod("getOperation_Ruleflow");
+                        Object ruleflowFeature = getRuleflowMethod.invoke(dsm);
+                        
+                        Method getUsingRuleflowMethod = dsm.getClass().getMethod("getOperation_UsingRuleflow");
+                        Object usingRuleflowFeature = getUsingRuleflowMethod.invoke(dsm);
+                        
+                        ruleflow = (IlrRuleflow) session.getElementDetails(ruleflow);
+                        IlrElementDetails opDtlsRuleflow = session.getElementDetails(operationHandle);
+                        
+                        // Seta o flag UsingRuleflow como true (conforme exemplo)
+                        opDtlsRuleflow.setRawValue((EStructuralFeature) usingRuleflowFeature, true);
+                        
+                        // Seta o Ruleflow (conforme exemplo)
+                        opDtlsRuleflow.setRawValue((EStructuralFeature) ruleflowFeature, ruleflow);
+                        
+                        // Tentar setar também o mainRuleflow com o path completo
+                        try {
+                            Method getMainRuleflowMethod = dsm.getClass().getMethod("getOperation_MainRuleflow");
+                            Object mainRuleflowFeature = getMainRuleflowMethod.invoke(dsm);
+                            opDtlsRuleflow.setRawValue((EStructuralFeature) mainRuleflowFeature, ruleflowFullPath);
+                            System.out.println("[ODMOperationService] ✓ mainRuleflow setado: " + ruleflowFullPath);
+                        } catch (Exception e) {
+                            System.out.println("[ODMOperationService] ⚠ Não conseguiu setar mainRuleflow: " + e.getMessage());
+                        }
+                        
+                        IlrCommitableObject cObjRuleflow = new IlrCommitableObject(operationHandle);
+                        cObjRuleflow.setRootDetails(opDtlsRuleflow);
+                        IlrElementHandle newHandle = session.commit(cObjRuleflow);
+                        if (newHandle != null) {
+                            operationHandle = newHandle;
+                            System.out.println("[ODMOperationService] ✓ Ruleflow associado via setRawValue: " + ruleflowFullPath + ", UsingRuleflow=true");
+                        }
+                    } catch (Exception e) {
+                        System.out.println("[ODMOperationService] ✗ Falha ao associar ruleflow: " + e.getMessage());
+                        e.printStackTrace();
+                    }
                     }
                 } else {
-                    System.out.println("[ODMOperationService] ⚠ Ruleflow não encontrado (ou ambíguo): " + ruleflowName);
+                    System.out.println("[ODMOperationService] ⚠ Ruleflow não encontrado: " + ruleflowName);
                 }
             }
 
-            // 5.1) Leitura de volta (independe de ter vindo ruleflow no POST)
+            // 5.1) Configura Extractor (sem usar reflexão para mainRuleflow)
+            if (ruleflowName != null && !ruleflowName.isBlank()) {
+                try {
+                    System.out.println("[ODMOperationService] [DEBUG] Configurando extractor...");
+                    IlrElementDetails opDtlsExtra = session.getElementDetails(operationHandle);
+                    boolean modified = false;
+                    
+                    // Extractor
+                    try {
+                        Method getExtractorMethod = dsm.getClass().getMethod("getOperation_Extractor");
+                        Object extractorFeature = getExtractorMethod.invoke(dsm);
+                        String extractorName = operationName + "_extractor";
+                        opDtlsExtra.setRawValue((EStructuralFeature) extractorFeature, extractorName);
+                        modified = true;
+                        System.out.println("[ODMOperationService] ✓ Extractor setado: " + extractorName);
+                    } catch (Exception ignore) {}
+                    
+                    // ExtractorValidator
+                    try {
+                        Method getValidatorMethod = dsm.getClass().getMethod("getOperation_ExtractorValidator");
+                 
+                        Object validatorFeature = getValidatorMethod.invoke(dsm);
+                        opDtlsExtra.setRawValue((EStructuralFeature) validatorFeature, "Default Validator");
+                        modified = true;
+                        System.out.println("[ODMOperationService] ✓ ExtractorValidator setado");
+                    } catch (Exception ignore) {}
+                    
+                    // Commit se algo foi modificado
+                    if (modified) {
+                        cObj = new IlrCommitableObject(operationHandle);
+                        cObj.setRootDetails(opDtlsExtra);
+                        IlrElementHandle newHandle = session.commit(cObj);
+                        if (newHandle != null) {
+                            operationHandle = newHandle;
+                            System.out.println("[ODMOperationService] ✓ Configurações extras commitadas");
+                        }
+                    }
+                } catch (Exception e) {
+                    System.out.println("[ODMOperationService] ⚠ Falha ao configurar extras: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            }
+
+            // 5.2) Leitura de volta (independe de ter vindo ruleflow no POST)
+            System.out.println("[ODMOperationService] [DEBUG] Iniciando leitura do ruleflow associado...");
             String linkedRf = readLinkedRuleflowName(session, dsm, operationHandle);
+            System.out.println("[ODMOperationService] [DEBUG] Resultado da leitura: '" + linkedRf + "'");
             result.put("dsmRuleflowLinked", linkedRf == null ? "" : linkedRf);
             if (linkedRf != null && !linkedRf.isBlank()) {
                 System.out.println("[ODMOperationService] (DSM) Ruleflow atualmente ligado à Operation = " + linkedRf);
@@ -256,9 +374,179 @@ public class ODMOperationService {
     }
 
     /**
-     * Associa o Ruleflow à Operation.
-     * IMPORTANTE: em vários drops, Operation_Ruleflow espera o OBJETO IlrRuleflow via setRawValue,
-     * e NÃO um handle e/ou setReferenceValue. Materializa o IlrRuleflow antes de setar.
+     * Associa Ruleflow usando a classe oficial EditDecisionOperation do ODM.
+     * Esta é a forma CORRETA usada pelo próprio Decision Center.
+     */
+    private boolean associateRuleflowViaEditCommand(
+            IlrSession session,
+            IlrElementHandle operationHandle,
+            String ruleflowName,
+            String operationName,
+            String projectName) {
+        try {
+            System.out.println("[ODMOperationService] [EDIT COMMAND] Usando EditDecisionOperation oficial...");
+            
+            // Pega os detalhes da operation
+            IlrElementDetails opDetails = session.getElementDetails(operationHandle);
+            
+            // O ODM usa IDs no formato "dsm.Operation:projectId:elementId"
+            // O toString() retorna: "IlrElementHandleImpl@xxx[type: dsm.Operation, ejbIdentifier: dsm.Operation:266:269]"
+            // Precisamos extrair apenas "dsm.Operation:266:269"
+            String opId = null;
+            
+            try {
+                String handleStr = operationHandle.toString();
+                System.out.println("[ODMOperationService] [DEBUG] Handle toString: " + handleStr);
+                
+                // Extrair o ejbIdentifier
+                if (handleStr != null && handleStr.contains("ejbIdentifier:")) {
+                    int startIdx = handleStr.indexOf("ejbIdentifier:") + "ejbIdentifier:".length();
+                    int endIdx = handleStr.indexOf("]", startIdx);
+                    if (endIdx > startIdx) {
+                        opId = handleStr.substring(startIdx, endIdx).trim();
+                        System.out.println("[ODMOperationService] [DEBUG] ID extraído: " + opId);
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("[ODMOperationService] [DEBUG] Erro ao extrair ID: " + e.getMessage());
+            }
+            
+            // Se não conseguiu extrair, tentar via reflexão para obter ejbIdentifier
+            if (opId == null) {
+                try {
+                    Method getEjbIdMethod = operationHandle.getClass().getMethod("getEjbIdentifier");
+                    Object ejbId = getEjbIdMethod.invoke(operationHandle);
+                    if (ejbId != null) {
+                        opId = String.valueOf(ejbId);
+                        System.out.println("[ODMOperationService] [DEBUG] ID via getEjbIdentifier: " + opId);
+                    }
+                } catch (Exception e) {
+                    System.out.println("[ODMOperationService] [DEBUG] Não tem getEjbIdentifier: " + e.getMessage());
+                }
+            }
+            
+            if (opId == null || opId.isBlank()) {
+                System.out.println("[ODMOperationService] [EDIT COMMAND] Não conseguiu obter ID no formato dsm.Operation:x:y");
+                return false;
+            }
+            
+            EditDecisionOperation editCmd = new EditDecisionOperation(session);
+            
+            // CRÍTICO: Setar o baselineId (obrigatório para BaselineCommand)
+            try {
+                IlrBaseline baseline = session.getWorkingBaseline();
+                if (baseline != null) {
+                    // Tentar obter o ID da baseline via reflexão
+                    try {
+                        Method getBaselineIdMethod = baseline.getClass().getMethod("getBaselineId");
+                        Object blId = getBaselineIdMethod.invoke(baseline);
+                        if (blId != null) {
+                            editCmd.setBaselineId(String.valueOf(blId));
+                            System.out.println("[ODMOperationService] [DEBUG] BaselineId setado: " + blId);
+                        }
+                    } catch (Exception e) {
+                        // Tentar toString da baseline
+                        String blStr = baseline.toString();
+                        System.out.println("[ODMOperationService] [DEBUG] Baseline toString: " + blStr);
+                        // Usar o nome da baseline como ID
+                        editCmd.setBaselineId(baseline.getName());
+                        System.out.println("[ODMOperationService] [DEBUG] BaselineId setado via getName: " + baseline.getName());
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("[ODMOperationService] [DEBUG] Erro ao obter baseline: " + e.getMessage());
+            }
+            
+            // Configurar TODOS os campos necessários usando os métodos corretos
+            editCmd.setId(opId);  // ← Método correto (não setDecisionOperationId)!
+            editCmd.setMainRuleflow(ruleflowName);
+            editCmd.setOperationName(operationName);
+            editCmd.setDescription("Operation updated via API");
+            
+            // Setar o projeto (recebido como parâmetro)
+            try {
+                editCmd.setStoredInProject(projectName);
+                System.out.println("[ODMOperationService] [DEBUG] StoredInProject setado: " + projectName);
+            } catch (Exception e) {
+                System.out.println("[ODMOperationService] [DEBUG] Não conseguiu setar storedInProject: " + e.getMessage());
+            }
+            
+            // Tentar executar SEM verificar isApplicable (pode estar bugado)
+            System.out.println("[ODMOperationService] [DEBUG] Executando comando diretamente...");
+            boolean success = false;
+            try {
+                success = editCmd.execute();
+                System.out.println("[ODMOperationService] [DEBUG] Resultado execute(): " + success);
+            } catch (Exception execEx) {
+                System.out.println("[ODMOperationService] [DEBUG] Erro no execute(): " + execEx.getMessage());
+                execEx.printStackTrace();
+            }
+            
+            if (success) {
+                System.out.println("[ODMOperationService] ✓ Ruleflow associado via EditDecisionOperation: " + ruleflowName);
+            } else {
+                System.out.println("[ODMOperationService] [EDIT COMMAND] execute() retornou false");
+            }
+            return success;
+            
+        } catch (Exception e) {
+            System.out.println("[ODMOperationService] [EDIT COMMAND] Falhou: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Associa Ruleflow usando API DSM de alto nível (IDsDecisionOperation).
+     * Retorna true se conseguiu, false caso contrário.
+     */
+    private boolean associateRuleflowViaDSM(
+            IlrSession session,
+            IlrElementHandle operationHandle,
+            IlrRuleflow ruleflow,
+            String ruleflowName) {
+        try {
+            // Obter detalhes da Operation
+            IlrElementDetails opDetails = session.getElementDetails(operationHandle);
+            
+            // Tentar cast para interface DSM
+            IDsDecisionOperation dsmOp = (IDsDecisionOperation) opDetails;
+            
+            // Materializar ruleflow
+            IlrElementDetails rfDetails = session.getElementDetails(ruleflow);
+            IDsRuleflow dsmRuleflow = (IDsRuleflow) rfDetails;
+            
+            // Usar API de alto nível
+            dsmOp.setRuleflow(dsmRuleflow);
+            dsmOp.setRuleflowName(ruleflowName);
+            dsmOp.setUsingRuleflow(true);
+            
+            // Commit usando IlrCommitableObject com o handle original
+            IlrCommitableObject cObj = new IlrCommitableObject(operationHandle);
+            cObj.setRootDetails(opDetails);
+            session.commit(cObj);
+            
+            // Verificar
+            String linked = dsmOp.getRuleflowName();
+            boolean using = dsmOp.isUsingRuleflow();
+            
+            System.out.println("[ODMOperationService] [DSM API] Ruleflow: " + linked + ", Using: " + using);
+            
+            return linked != null && !linked.isBlank() && using;
+            
+        } catch (ClassCastException e) {
+            System.out.println("[ODMOperationService] [DSM API] Cast falhou - API DSM não disponível");
+            return false;
+        } catch (Exception e) {
+            System.out.println("[ODMOperationService] [DSM API] Erro: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Associa o Ruleflow à Operation (método via reflexão).
+     * Usa setRawValue de acordo com o exemplo fornecido:
+     * operation.setRawValue(dsm.getOperation_UsingRuleflow(), true);
+     * operation.setRawValue(dsm.getOperation_Ruleflow(), ruleflow);
      */
     private boolean setOperationRuleflowReference(
             IlrSession session,
@@ -266,46 +554,77 @@ public class ODMOperationService {
             IlrElementHandle operationHandle,
             IlrRuleflow ruleflow) {
         try {
+            // Obter as features do DSM
             Method getRuleflowMethod = dsm.getClass().getMethod("getOperation_Ruleflow");
             Object ruleflowFeature = getRuleflowMethod.invoke(dsm);
+            
+            Method getUsingRuleflowMethod = dsm.getClass().getMethod("getOperation_UsingRuleflow");
+            Object usingRuleflowFeature = getUsingRuleflowMethod.invoke(dsm);
 
-            // materializa
+            // Materializa o ruleflow
             ruleflow = (IlrRuleflow) session.getElementDetails(ruleflow);
 
-            IlrElementDetails opDtls = session.getElementDetailsForThisHandle(operationHandle);
+            // Pega os detalhes atuais da operation
+            IlrElementDetails opDtls = session.getElementDetails(operationHandle);
 
-            // passar o OBJETO IlrRuleflow
+            // Seta o flag UsingRuleflow como true (conforme exemplo)
+            opDtls.setRawValue((EStructuralFeature) usingRuleflowFeature, true);
+            
+            // Seta o Ruleflow (conforme exemplo)
             opDtls.setRawValue((EStructuralFeature) ruleflowFeature, ruleflow);
 
+            // Commit usando setRootDetails
             IlrCommitableObject cObj = new IlrCommitableObject(operationHandle);
             cObj.setRootDetails(opDtls);
-            session.commit(cObj);
+            operationHandle = session.commit(cObj);
 
-            System.out.println("[ODMOperationService] ✓ Ruleflow associado via setRawValue(IlrRuleflow): "
-                    + (ruleflow == null ? "<null>" : ruleflow.getName()));
+            System.out.println("[ODMOperationService] ✓ Ruleflow associado via setRawValue: "
+                    + (ruleflow == null ? "<null>" : ruleflow.getName()) + ", UsingRuleflow=true");
             return true;
         } catch (Exception e) {
             System.out.println("[ODMOperationService] ⚠ Falha ao associar ruleflow: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
 
     /**
      * Lê do DSM o ruleflow atualmente associado à Operation e retorna o nome.
+     * Tenta API DSM primeiro, depois fallback para reflexão.
      */
     private String readLinkedRuleflowName(IlrSession session, Object dsm, IlrElementHandle operationHandle) {
+        // Tenta API DSM primeiro
+        try {
+            IlrElementDetails opDtls = session.getElementDetails(operationHandle);
+            IDsDecisionOperation dsmOp = (IDsDecisionOperation) opDtls;
+            
+            String rfName = dsmOp.getRuleflowName();
+            boolean using = dsmOp.isUsingRuleflow();
+            
+            System.out.println("[ODMOperationService] [DSM API] getRuleflowName: " + rfName + ", isUsing: " + using);
+            
+            if (rfName != null && !rfName.isBlank()) {
+                return rfName;
+            }
+        } catch (ClassCastException e) {
+            System.out.println("[ODMOperationService] [DSM API] Cast falhou, usando reflexão...");
+        } catch (Exception e) {
+            System.out.println("[ODMOperationService] [DSM API] Erro na leitura: " + e.getMessage());
+        }
+        
+        // Fallback para reflexão
         try {
             Method getRuleflowMethod = dsm.getClass().getMethod("getOperation_Ruleflow");
             Object ruleflowFeature = getRuleflowMethod.invoke(dsm);
-
-            IlrElementDetails opDtls = session.getElementDetailsForThisHandle(operationHandle);
-
-            // tenta getRawValue(feature)
-            Method getRaw = opDtls.getClass().getMethod("getRawValue", ruleflowFeature.getClass());
+            IlrElementDetails opDtls = session.getElementDetails(operationHandle);
+            Method getRaw = opDtls.getClass().getMethod("getRawValue", EStructuralFeature.class);
             getRaw.setAccessible(true);
             Object linked = getRaw.invoke(opDtls, ruleflowFeature);
+            
             if (linked == null) return "";
-
+            if (linked instanceof IlrElementHandle) {
+                linked = session.getElementDetails((IlrElementHandle) linked);
+            }
             try {
                 Object name = linked.getClass().getMethod("getName").invoke(linked);
                 return (name == null) ? "" : String.valueOf(name);
@@ -313,14 +632,36 @@ public class ODMOperationService {
                 return String.valueOf(linked);
             }
         } catch (Throwable t) {
+            System.out.println("[ODMOperationService] [REFLEXÃO] Erro: " + t.getMessage());
             return "";
         }
     }
 
     /**
-     * Grava rulesetName em design-time se existir feature String no DSM; senão retorna false.
+     * Grava rulesetName em design-time. Tenta API DSM primeiro, depois reflexão.
      */
     private boolean setOperationRulesetDesignTime(IlrSession session, Object dsm, IlrElementHandle operationHandle, String rulesetName) {
+        // Tenta API DSM primeiro
+        try {
+            IlrElementDetails opDtls = session.getElementDetails(operationHandle);
+            IDsDecisionOperation dsmOp = (IDsDecisionOperation) opDtls;
+            
+            dsmOp.setRulesetName(rulesetName);
+            
+            // Commit usando IlrCommitableObject
+            IlrCommitableObject cObj = new IlrCommitableObject(operationHandle);
+            cObj.setRootDetails(opDtls);
+            session.commit(cObj);
+            
+            System.out.println("[ODMOperationService] ✓ RulesetName gravado via API DSM: " + rulesetName);
+            return true;
+        } catch (ClassCastException e) {
+            System.out.println("[ODMOperationService] [DSM API] Cast falhou, usando reflexão...");
+        } catch (Exception e) {
+            System.out.println("[ODMOperationService] [DSM API] Erro ao gravar ruleset: " + e.getMessage());
+        }
+        
+        // Fallback para reflexão
         final String[] featureCandidates = new String[] {
                 "getOperation_RulesetName",
                 "getOperation_RuleSetName",
@@ -339,7 +680,7 @@ public class ODMOperationService {
                     IlrCommitableObject cObj = new IlrCommitableObject(operationHandle);
                     cObj.setRootDetails(opDtls);
                     session.commit(cObj);
-                    System.out.println("[ODMOperationService] ✓ RulesetName gravado em design-time via feature: " + m);
+                    System.out.println("[ODMOperationService] ✓ RulesetName gravado via reflexão: " + m);
                     return true;
                 }
             } catch (NoSuchMethodException nsme) {
@@ -485,6 +826,30 @@ public class ODMOperationService {
             String description,
             String rulesetName
     ) throws Exception {
+        return saveOperation(projectName, baselineName, operationName,
+                ruleflowPackageIgnored, ruleflowName, parameters, rulesetParameters,
+                registryRootPackageIgnored, descriptorSetNames, paramsSetNames, rulesetParamSetNames,
+                packagePathIgnored, description, rulesetName, null);
+    }
+
+    // Versão completa (15 parâmetros) com rulesetName e variableSetName
+    public Map<String,Object> saveOperation(
+            String projectName,
+            String baselineName,
+            String operationName,
+            String ruleflowPackageIgnored,
+            String ruleflowName,
+            List<Map<String,String>> parameters,
+            Map<String,String> rulesetParameters,
+            String registryRootPackageIgnored,
+            List<String> descriptorSetNames,
+            List<String> paramsSetNames,
+            List<String> rulesetParamSetNames,
+            String packagePathIgnored,
+            String description,
+            String rulesetName,
+            String variableSetName              // Nome do Variable Set para parâmetros da Operation
+    ) throws Exception {
         IlrSession session = null;
         Map<String,Object> out = new LinkedHashMap<>();
         try {
@@ -503,10 +868,11 @@ public class ODMOperationService {
             System.out.println("[DEBUG] Ruleflow (request): " + ruleflowName);
             System.out.println("[DEBUG] RulesetName: " + rulesetName);
             System.out.println("[DEBUG] Parameters count: " + (parameters != null ? parameters.size() : 0));
+            System.out.println("[DEBUG] Variable Set Name: " + (variableSetName != null ? variableSetName : "(default: variaveis)"));
 
             // 1) Cria/atualiza Operation + associa ruleflow + lê de volta o vínculo
             Map<String,String> opInfo = createOrUpdateServiceOperation(
-                    session, project, packagePathIgnored, operationName, description, parameters, ruleflowName, rulesetName
+                    session, project, packagePathIgnored, operationName, description, parameters, ruleflowName, rulesetName, variableSetName
             );
             out.putAll(opInfo);
             out.put("dsmRuleflowLinked", opInfo.getOrDefault("dsmRuleflowLinked", ""));

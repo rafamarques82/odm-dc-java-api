@@ -1,0 +1,33 @@
+{
+  "projectName": "DS-FinanciamentoImobiliario",
+  "baselineName": "Main",
+  "operationName": "CalcularFinanciamento",
+  "variableSetName": "variaveis",
+  "description": "Operação para calcular financiamento imobiliário",
+  "ruleflow": {
+    "ruleflowName": "Fluxo de Calculo de Financiamento"
+  },
+  "rulesetName": "FinanciamentoRuleset",
+  "parameters": [
+    {
+      "name": "credito",
+      "direction": "IN",
+      "bomType": "credito"
+    },
+    {
+      "name": "elegivel",
+      "direction": "OUT",
+      "bomType": "booleano"
+    },
+    {
+      "name": "financiamento",
+      "direction": "INOUT",
+      "bomType": "financiamento"
+    }
+  ],
+  "registry": {
+    "descriptorSets": ["variaveis"],
+    "paramsSets": ["variaveis"],
+    "rulesetParamSets": ["variaveis"]
+  }
+}
